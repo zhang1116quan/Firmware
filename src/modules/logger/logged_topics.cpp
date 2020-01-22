@@ -99,6 +99,9 @@ void LoggedTopics::add_default_topics()
 
 	// multi topics
 	add_topic_multi("actuator_outputs", 100);
+	add_topic_multi("estimator_attitude", 500);
+	add_topic_multi("estimator_local_position", 500);
+	add_topic_multi("estimator_global_position", 1000);
 	add_topic_multi("logger_status");
 	add_topic_multi("multirotor_motor_limits", 1000);
 	add_topic_multi("telemetry_status", 1000);

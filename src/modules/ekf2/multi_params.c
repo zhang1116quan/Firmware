@@ -31,51 +31,31 @@
  *
  ****************************************************************************/
 
-#pragma once
+/**
+ * EKF instances
+ *
+ * Multi-EKF disabled if 0.
+ *
+ * @group EKF2
+ * @min 0
+ * @max 9
+ */
+PARAM_DEFINE_INT32(EKF2_MULTI_INST, 0);
 
-#include <sensor_corrections/SensorCorrections.hpp>
+/**
+ * EKF 0 device id of IMU
+ * @group EKF2
+ */
+PARAM_DEFINE_INT32(EKF2_0_IMU_ID, 0);
 
-#include <lib/mathlib/math/Limits.hpp>
-#include <lib/matrix/matrix/math.hpp>
-#include <px4_platform_common/log.h>
-#include <px4_platform_common/module_params.h>
-#include <px4_platform_common/px4_config.h>
-#include <px4_platform_common/px4_work_queue/WorkItem.hpp>
-#include <uORB/PublicationMulti.hpp>
-#include <uORB/Subscription.hpp>
-#include <uORB/SubscriptionCallback.hpp>
-#include <uORB/topics/parameter_update.h>
-#include <uORB/topics/sensor_accel_integrated.h>
-#include <uORB/topics/sensor_gyro_integrated.h>
-#include <uORB/topics/vehicle_imu.h>
+/**
+ * EKF 1 device id of IMU
+ * @group EKF2
+ */
+PARAM_DEFINE_INT32(EKF2_1_IMU_ID, 0);
 
-namespace sensors
-{
-
-class VehicleIMU : public ModuleParams, public px4::WorkItem
-{
-public:
-	VehicleIMU() = delete;
-	VehicleIMU(int instance, uint8_t accel_index = 0, uint8_t gyro_index = 0);
-
-	~VehicleIMU() override;
-
-	bool Start();
-	void Stop();
-
-	void PrintStatus();
-
-private:
-	void ParametersUpdate(bool force = false);
-	void Run() override;
-
-	uORB::PublicationMulti<vehicle_imu_s> _vehicle_imu_pub{ORB_ID(vehicle_imu)};
-	uORB::Subscription _params_sub{ORB_ID(parameter_update)};
-	uORB::SubscriptionCallbackWorkItem _sensor_accel_integrated_sub;
-	uORB::SubscriptionCallbackWorkItem _sensor_gyro_integrated_sub;
-
-	SensorCorrections _accel_corrections;
-	SensorCorrections _gyro_corrections;
-};
-
-} // namespace sensors
+/**
+ * EKF 2 device id of IMU
+ * @group EKF2
+ */
+PARAM_DEFINE_INT32(EKF2_2_IMU_ID, 0);

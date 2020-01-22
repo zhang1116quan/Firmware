@@ -52,8 +52,12 @@ using namespace sensors;
 using namespace matrix;
 using math::radians;
 
-VotedSensorsUpdate::VotedSensorsUpdate(const Parameters &parameters, bool hil_enabled)
-	: ModuleParams(nullptr), _parameters(parameters), _hil_enabled(hil_enabled), _mag_compensator(this)
+VotedSensorsUpdate::VotedSensorsUpdate(const Parameters &parameters, bool imu_selection, bool hil_enabled) :
+	ModuleParams(nullptr),
+	_parameters(parameters),
+	_imu_selection(imu_selection),
+	_hil_enabled(hil_enabled),
+	_mag_compensator(this)
 {
 	for (unsigned i = 0; i < 3; i++) {
 		_corrections.gyro_scale_0[i] = 1.0f;
@@ -786,12 +790,14 @@ void VotedSensorsUpdate::sensorsPoll(sensor_combined_s &raw, vehicle_magnetomete
 	magPoll(magnetometer);
 
 	// publish sensor selection if changed
-	if (_selection_changed) {
-		_selection.timestamp = hrt_absolute_time();
+	if (_imu_selection) {
+		if (_selection_changed) {
+			_selection.timestamp = hrt_absolute_time();
 
-		_sensor_selection_pub.publish(_selection);
+			_sensor_selection_pub.publish(_selection);
 
-		_selection_changed = false;
+			_selection_changed = false;
+		}
 	}
 }
 

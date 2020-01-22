@@ -191,3 +191,15 @@ PARAM_DEFINE_FLOAT(SENS_BOARD_Z_OFF, 0.0f);
  * @group Sensors
  */
 PARAM_DEFINE_INT32(SENS_EN_THERMAL, -1);
+
+/**
+ * Sensors hub IMU mode
+ *
+ * @value 0 Publish all IMU instances
+ * @value 1 Publish only highest priority
+ *
+ * @category system
+ * @reboot_required true
+ * @group Sensors
+ */
+PARAM_DEFINE_INT32(SENS_IMU_MODE, 0);

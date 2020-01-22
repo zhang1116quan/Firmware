@@ -81,7 +81,7 @@ public:
 	 * @param parameters parameter values. These do not have to be initialized when constructing this object.
 	 * Only when calling init(), they have to be initialized.
 	 */
-	VotedSensorsUpdate(const Parameters &parameters, bool hil_enabled);
+	VotedSensorsUpdate(const Parameters &parameters, bool imu_selection, bool hil_enabled);
 
 	/**
 	 * initialize subscriptions etc.
@@ -214,6 +214,7 @@ private:
 	matrix::Dcmf _mag_rotation[MAG_COUNT_MAX] {};	/**< rotation matrix for the orientation that the external mag0 is mounted */
 
 	const Parameters &_parameters;
+	const bool _imu_selection{false};
 	const bool _hil_enabled{false};			/**< is hardware-in-the-loop mode enabled? */
 
 	bool _selection_changed{false};			/**< true when a sensor selection has changed and not been published */

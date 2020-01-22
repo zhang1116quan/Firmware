@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2015-2019 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2015-2020 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -94,10 +94,15 @@
 using math::constrain;
 using namespace time_literals;
 
-class Ekf2 final : public ModuleBase<Ekf2>, public ModuleParams, public px4::ScheduledWorkItem
+// TEMPORARY FOR TESTING ONLY
+class Ekf2;
+static px4::atomic<Ekf2 *> _objects[3];
+
+class Ekf2 final : public ModuleParams, public px4::ScheduledWorkItem
 {
 public:
-	explicit Ekf2(bool replay_mode = false);
+	Ekf2() = delete;
+	Ekf2(bool multi_mode, uint8_t multi_instance, bool replay_mode = false);
 	~Ekf2() override;
 
 	/** @see ModuleBase */
@@ -111,7 +116,12 @@ public:
 
 	bool init();
 
-	int print_status() override;
+	int print_status();
+
+	// TEMPORARY FOR TESTING ONLY
+	px4::atomic_bool _task_should_exit{false};
+	bool should_exit() const { return _task_should_exit.load(); }
+	void exit_and_cleanup() {}
 
 private:
 	void Run() override;
@@ -172,9 +182,12 @@ private:
 	 */
 	float filter_altitude_ellipsoid(float amsl_hgt);
 
-	inline float sq(float x) { return x * x; };
+	static constexpr float sq(float x) { return x * x; };
 
-	const bool 	_replay_mode;			///< true when we use replay data from a log
+	const bool 	_replay_mode{false};			///< true when we use replay data from a log
+
+	const bool    _multi_mode;
+	uint8_t _multi_instance;
 
 	// time slip monitoring
 	uint64_t _integrated_time_us = 0;	///< integral of gyro delta time from start (uSec)
@@ -266,21 +279,22 @@ private:
 	vehicle_land_detected_s		_vehicle_land_detected{};
 	vehicle_status_s		_vehicle_status{};
 
-	uORB::Publication<ekf2_timestamps_s>			_ekf2_timestamps_pub{ORB_ID(ekf2_timestamps)};
-	uORB::Publication<ekf_gps_drift_s>			_ekf_gps_drift_pub{ORB_ID(ekf_gps_drift)};
-	uORB::Publication<ekf_gps_position_s>			_blended_gps_pub{ORB_ID(ekf_gps_position)};
-	uORB::Publication<estimator_innovations_s>		_estimator_innovation_test_ratios_pub{ORB_ID(estimator_innovation_test_ratios)};
-	uORB::Publication<estimator_innovations_s>		_estimator_innovation_variances_pub{ORB_ID(estimator_innovation_variances)};
-	uORB::Publication<estimator_innovations_s>		_estimator_innovations_pub{ORB_ID(estimator_innovations)};
-	uORB::Publication<estimator_sensor_bias_s>		_estimator_sensor_bias_pub{ORB_ID(estimator_sensor_bias)};
-	uORB::Publication<estimator_status_s>			_estimator_status_pub{ORB_ID(estimator_status)};
-	uORB::Publication<vehicle_attitude_s>			_att_pub{ORB_ID(vehicle_attitude)};
-	uORB::Publication<vehicle_odometry_s>			_vehicle_odometry_pub{ORB_ID(vehicle_odometry)};
-	uORB::Publication<yaw_estimator_status_s>		_yaw_est_pub{ORB_ID(yaw_estimator_status)};
-	uORB::PublicationData<vehicle_global_position_s>	_vehicle_global_position_pub{ORB_ID(vehicle_global_position)};
-	uORB::PublicationData<vehicle_local_position_s>		_vehicle_local_position_pub{ORB_ID(vehicle_local_position)};
-	uORB::PublicationData<vehicle_odometry_s>		_vehicle_visual_odometry_aligned_pub{ORB_ID(vehicle_visual_odometry_aligned)};
+	uORB::PublicationMulti<ekf2_timestamps_s>		_ekf2_timestamps_pub{ORB_ID(ekf2_timestamps)};
+	uORB::PublicationMulti<ekf_gps_drift_s>			_ekf_gps_drift_pub{ORB_ID(ekf_gps_drift)};
+	uORB::PublicationMulti<ekf_gps_position_s>		_blended_gps_pub{ORB_ID(ekf_gps_position)};
+	uORB::PublicationMulti<estimator_innovations_s>		_estimator_innovation_test_ratios_pub{ORB_ID(estimator_innovation_test_ratios)};
+	uORB::PublicationMulti<estimator_innovations_s>		_estimator_innovation_variances_pub{ORB_ID(estimator_innovation_variances)};
+	uORB::PublicationMulti<estimator_innovations_s>		_estimator_innovations_pub{ORB_ID(estimator_innovations)};
+	uORB::PublicationMulti<estimator_sensor_bias_s>		_estimator_sensor_bias_pub{ORB_ID(estimator_sensor_bias)};
+	uORB::PublicationMulti<estimator_status_s>		_estimator_status_pub{ORB_ID(estimator_status)};
+	uORB::PublicationMulti<yaw_estimator_status_s>		_yaw_est_pub{ORB_ID(yaw_estimator_status)};
 	uORB::PublicationMulti<wind_estimate_s>			_wind_pub{ORB_ID(wind_estimate)};
+
+	uORB::PublicationMulti<vehicle_attitude_s>		_att_pub;
+	uORB::PublicationMulti<vehicle_odometry_s>		_vehicle_odometry_pub;
+	uORB::PublicationMultiData<vehicle_global_position_s>	_vehicle_global_position_pub;
+	uORB::PublicationMultiData<vehicle_local_position_s>	_vehicle_local_position_pub;
+	uORB::PublicationMultiData<vehicle_odometry_s>		_vehicle_visual_odometry_aligned_pub;
 
 	Ekf _ekf;
 
@@ -433,8 +447,6 @@ private:
 		(ParamExtFloat<px4::params::EKF2_OF_GATE>)
 		_param_ekf2_of_gate,	///< optical flow fusion innovation consistency gate size (STD)
 
-		(ParamInt<px4::params::EKF2_IMU_ID>) _param_ekf2_imu_id,
-
 		// sensor positions in body frame
 		(ParamExtFloat<px4::params::EKF2_IMU_POS_X>) _param_ekf2_imu_pos_x,		///< X position of IMU in body frame (m)
 		(ParamExtFloat<px4::params::EKF2_IMU_POS_Y>) _param_ekf2_imu_pos_y,		///< Y position of IMU in body frame (m)
@@ -540,11 +552,19 @@ private:
 
 };
 
-Ekf2::Ekf2(bool replay_mode):
+Ekf2::Ekf2(bool multi_mode, uint8_t multi_instance, bool replay_mode):
 	ModuleParams(nullptr),
 	ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::navigation_and_controllers),
 	_replay_mode(replay_mode),
+	_multi_mode(multi_mode),
+	_multi_instance(multi_instance),
 	_ekf_update_perf(perf_alloc(PC_ELAPSED, MODULE_NAME": update")),
+	_att_pub(multi_mode ? ORB_ID(estimator_attitude) : ORB_ID(vehicle_attitude)),
+	_vehicle_odometry_pub(multi_mode ? ORB_ID(estimator_odometry) : ORB_ID(vehicle_odometry)),
+	_vehicle_global_position_pub(multi_mode ? ORB_ID(estimator_global_position) : ORB_ID(vehicle_global_position)),
+	_vehicle_local_position_pub(multi_mode ? ORB_ID(estimator_local_position) : ORB_ID(vehicle_local_position)),
+	_vehicle_visual_odometry_aligned_pub(multi_mode ? ORB_ID(estimator_visual_odometry_aligned) : ORB_ID(
+			vehicle_visual_odometry_aligned)),
 	_params(_ekf.getParamHandle()),
 	_param_ekf2_min_obs_dt(_params->sensor_interval_min_ms),
 	_param_ekf2_mag_delay(_params->mag_delay_ms),
@@ -654,6 +674,35 @@ Ekf2::Ekf2(bool replay_mode):
 	updateParams();
 
 	_ekf.set_min_required_gps_health_time(_param_ekf2_req_gps_h.get() * 1_s);
+
+	if (_multi_mode) {
+		if (_multi_instance == 0) {
+			ChangeWorkQeue(px4::wq_configurations::INS0);
+
+		} else if (_multi_instance == 1) {
+			ChangeWorkQeue(px4::wq_configurations::INS1);
+
+		} else if (_multi_instance == 2) {
+			ChangeWorkQeue(px4::wq_configurations::INS2);
+		}
+	}
+
+	// advertise immediately to ensure consistent uORB instance numbering
+	_att_pub.advertise();
+	_blended_gps_pub.advertise();
+	_ekf2_timestamps_pub.advertise();
+	_ekf_gps_drift_pub.advertise();
+	_estimator_innovation_test_ratios_pub.advertise();
+	_estimator_innovation_variances_pub.advertise();
+	_estimator_innovations_pub.advertise();
+	_estimator_sensor_bias_pub.advertise();
+	_estimator_status_pub.advertise();
+	_vehicle_global_position_pub.advertise();
+	_vehicle_local_position_pub.advertise();
+	_vehicle_odometry_pub.advertise();
+	_vehicle_visual_odometry_aligned_pub.advertise();
+	_wind_pub.advertise();
+	_yaw_est_pub.advertise();
 }
 
 Ekf2::~Ekf2()
@@ -663,17 +712,32 @@ Ekf2::~Ekf2()
 
 bool Ekf2::init()
 {
-	const uint32_t device_id = _param_ekf2_imu_id.get();
+	if (_multi_mode) {
+		char str[16] {};
+		sprintf(str, "EKF2_%u_IMU_ID", _multi_instance);
+		param_t param_imu_id_handle = param_find(str);
 
-	// if EKF2_IMU_ID is non-zero we use the corresponding IMU, otherwise the voted primary (sensor_combined)
-	if (device_id != 0) {
+		int32_t imu_device_id = 0;
+		param_get(param_imu_id_handle, &imu_device_id);
+
+		// if EKF2_x_IMU_ID isn't set then find corresponding vehicle_imu instance
+		if (imu_device_id == 0) {
+			vehicle_imu_s imu{};
+			_vehicle_imu_subs[_multi_instance].copy(&imu);
+
+			if (imu.accel_device_id > 0) {
+				imu_device_id = imu.accel_device_id;
+				param_set(param_imu_id_handle, &imu_device_id);
+			}
+		}
+
 		for (int i = 0; i < MAX_SENSOR_COUNT; i++) {
 			vehicle_imu_s imu{};
 
 			if (_vehicle_imu_subs[i].copy(&imu)) {
-				if ((imu.accel_device_id > 0) && (imu.accel_device_id == device_id)) {
+				if ((imu.accel_device_id > 0) && (imu.accel_device_id == (uint32_t)imu_device_id)) {
 					if (_vehicle_imu_subs[i].registerCallback()) {
-						PX4_INFO("subscribed to vehicle_imu:%d (%d)", i, device_id);
+						PX4_INFO("subscribed to vehicle_imu:%d (%d)", i, imu_device_id);
 						_imu_sub_index = i;
 						_callback_registered = true;
 						return true;
@@ -699,6 +763,10 @@ bool Ekf2::init()
 
 int Ekf2::print_status()
 {
+	if (_multi_mode) {
+		PX4_INFO("Instance: %d", _multi_instance);
+	}
+
 	PX4_INFO("local position: %s", (_ekf.local_position_is_valid()) ? "valid" : "invalid");
 	PX4_INFO("global position: %s", (_ekf.global_position_is_valid()) ? "valid" : "invalid");
 
@@ -2411,18 +2479,24 @@ int Ekf2::custom_command(int argc, char *argv[])
 
 int Ekf2::task_spawn(int argc, char *argv[])
 {
-	bool replay_mode = false;
+	int i = argc;
 
-	if (argc > 1 && !strcmp(argv[1], "-r")) {
-		PX4_INFO("replay mode enabled");
-		replay_mode = true;
+	if (_objects[i].load() != nullptr) {
+		return -1;
 	}
 
-	Ekf2 *instance = new Ekf2(replay_mode);
+	bool replay_mode = false;
+
+	//if (argc > 1 && !strcmp(argv[1], "-r")) {
+	//	PX4_INFO("replay mode enabled");
+	//	replay_mode = true;
+	//}
+
+	Ekf2 *instance = new Ekf2(true, i, replay_mode);
 
 	if (instance) {
-		_object.store(instance);
-		_task_id = task_id_is_work_queue;
+		_objects[i].store(instance);
+		//_task_id = task_id_is_work_queue;
 
 		if (instance->init()) {
 			return PX4_OK;
@@ -2433,8 +2507,8 @@ int Ekf2::task_spawn(int argc, char *argv[])
 	}
 
 	delete instance;
-	_object.store(nullptr);
-	_task_id = -1;
+	_objects[i].store(nullptr);
+	//_task_id = -1;
 
 	return PX4_ERROR;
 }
@@ -2467,5 +2541,26 @@ timestamps from the sensor topics.
 
 extern "C" __EXPORT int ekf2_main(int argc, char *argv[])
 {
-	return Ekf2::main(argc, argv);
+	if (strcmp(argv[1], "start") == 0) {
+
+		// TODO: check EKF2_MULTI_INST
+		Ekf2::task_spawn(0, nullptr);
+		px4_usleep(10000);
+		Ekf2::task_spawn(1, nullptr);
+		px4_usleep(10000);
+		Ekf2::task_spawn(2, nullptr);
+
+		return 0;
+	} else if (strcmp(argv[1], "status") == 0) {
+
+		for (int i = 0; i < 3; i++) {
+			if (_objects[i].load() != nullptr) {
+				_objects[i].load()->print_status();
+			}
+		}
+
+		return 0;
+	}
+
+	return 0;
 }

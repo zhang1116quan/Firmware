@@ -41,14 +41,23 @@ using namespace time_literals;
 namespace sensors
 {
 
-VehicleIMU::VehicleIMU(uint8_t accel_index, uint8_t gyro_index) :
+VehicleIMU::VehicleIMU(int instance, uint8_t accel_index, uint8_t gyro_index) :
 	ModuleParams(nullptr),
-	WorkItem(MODULE_NAME, px4::wq_configurations::navigation_and_controllers),
+	WorkItem(MODULE_NAME, px4::wq_configurations::INS0),
 	_sensor_accel_integrated_sub(this, ORB_ID(sensor_accel_integrated), accel_index),
 	_sensor_gyro_integrated_sub(this, ORB_ID(sensor_gyro_integrated), gyro_index),
 	_accel_corrections(this, SensorCorrections::SensorType::Accelerometer),
 	_gyro_corrections(this, SensorCorrections::SensorType::Gyroscope)
 {
+	if (instance == 0) {
+		//ChangeWorkQeue(px4::wq_configurations::INS0);
+
+	} else if (instance == 1) {
+		ChangeWorkQeue(px4::wq_configurations::INS1);
+
+	} else if (instance == 2) {
+		ChangeWorkQeue(px4::wq_configurations::INS2);
+	}
 }
 
 VehicleIMU::~VehicleIMU()

@@ -40,7 +40,9 @@ else
 		# EKF2
 		#
 		param set SYS_MC_EST_GROUP 2
+
 		ekf2 start
+		ekf2_selector start
 	fi
 fi
 
