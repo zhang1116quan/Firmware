@@ -31,9 +31,9 @@
  *
  ****************************************************************************/
 
-#include "MPU9250.hpp"
+#include "ICM20948.hpp"
 
-#include "AKM_AK8963_registers.hpp"
+#include "AKM_AK09916_registers.hpp"
 
 using namespace time_literals;
 
@@ -42,28 +42,30 @@ static constexpr int16_t combine(uint8_t msb, uint8_t lsb)
 	return (msb << 8u) | lsb;
 }
 
-MPU9250::MPU9250(I2CSPIBusOption bus_option, int bus, uint32_t device, enum Rotation rotation, int bus_frequency,
-		 spi_mode_e spi_mode, spi_drdy_gpio_t drdy_gpio, bool enable_magnetometer) :
-	SPI(DRV_IMU_DEVTYPE_MPU9250, MODULE_NAME, bus, device, spi_mode, bus_frequency),
+ICM20948::ICM20948(I2CSPIBusOption bus_option, int bus, uint32_t device, enum Rotation rotation, int bus_frequency,
+		   spi_mode_e spi_mode, spi_drdy_gpio_t drdy_gpio, bool enable_magnetometer) :
+	SPI(DRV_IMU_DEVTYPE_ICM20948, MODULE_NAME, bus, device, spi_mode, bus_frequency),
 	I2CSPIDriver(MODULE_NAME, px4::device_bus_to_wq(get_device_id()), bus_option, bus),
 	_drdy_gpio(drdy_gpio),
-	_px4_accel(get_device_id(), ORB_PRIO_HIGH, rotation),
-	_px4_gyro(get_device_id(), ORB_PRIO_HIGH, rotation)
+	_px4_accel(get_device_id(), ORB_PRIO_DEFAULT, rotation),
+	_px4_gyro(get_device_id(), ORB_PRIO_DEFAULT, rotation)
 {
+	_debug_enabled = true;
+
 	ConfigureSampleRate(_px4_gyro.get_max_rate_hz());
 
 	if (enable_magnetometer) {
-		_slave_ak8963_magnetometer = new AKM_AK8963::MPU9250_AK8963(*this, rotation);
+		_slave_ak09916_magnetometer = new AKM_AK09916::ICM20948_AK09916(*this, rotation);
 
-		if (_slave_ak8963_magnetometer) {
-			for (auto &r : _register_cfg) {
-				if (r.reg == Register::I2C_SLV4_CTRL) {
+		if (_slave_ak09916_magnetometer) {
+			for (auto &r : _register_bank3_cfg) {
+				if (r.reg == Register::BANK_3::I2C_SLV4_CTRL) {
 					r.set_bits = I2C_SLV4_CTRL_BIT::I2C_MST_DLY;
 
-				} else if (r.reg == Register::I2C_MST_CTRL) {
+				} else if (r.reg == Register::BANK_3::I2C_MST_CTRL) {
 					r.set_bits = I2C_MST_CTRL_BIT::I2C_MST_P_NSR | I2C_MST_CTRL_BIT::I2C_MST_CLK_400_kHz;
 
-				} else if (r.reg == Register::I2C_MST_DELAY_CTRL) {
+				} else if (r.reg == Register::BANK_3::I2C_MST_DELAY_CTRL) {
 					r.set_bits = I2C_MST_DELAY_CTRL_BIT::I2C_SLVX_DLY_EN;
 				}
 			}
@@ -71,7 +73,7 @@ MPU9250::MPU9250(I2CSPIBusOption bus_option, int bus, uint32_t device, enum Rota
 	}
 }
 
-MPU9250::~MPU9250()
+ICM20948::~ICM20948()
 {
 	perf_free(_transfer_perf);
 	perf_free(_bad_register_perf);
@@ -80,9 +82,11 @@ MPU9250::~MPU9250()
 	perf_free(_fifo_overflow_perf);
 	perf_free(_fifo_reset_perf);
 	perf_free(_drdy_interval_perf);
+
+	delete _slave_ak09916_magnetometer;
 }
 
-int MPU9250::init()
+int ICM20948::init()
 {
 	int ret = SPI::init();
 
@@ -94,7 +98,7 @@ int MPU9250::init()
 	return Reset() ? 0 : -1;
 }
 
-bool MPU9250::Reset()
+bool ICM20948::Reset()
 {
 	_state = STATE::RESET;
 	ScheduleClear();
@@ -102,13 +106,13 @@ bool MPU9250::Reset()
 	return true;
 }
 
-void MPU9250::exit_and_cleanup()
+void ICM20948::exit_and_cleanup()
 {
 	DataReadyInterruptDisable();
 	I2CSPIDriverBase::exit_and_cleanup();
 }
 
-void MPU9250::print_status()
+void ICM20948::print_status()
 {
 	I2CSPIDriverBase::print_status();
 	PX4_INFO("FIFO empty interval: %d us (%.3f Hz)", _fifo_empty_interval_us,
@@ -125,14 +129,29 @@ void MPU9250::print_status()
 	_px4_accel.print_status();
 	_px4_gyro.print_status();
 
-	if (_slave_ak8963_magnetometer) {
-		_slave_ak8963_magnetometer->PrintInfo();
+	if (_slave_ak09916_magnetometer) {
+		_slave_ak09916_magnetometer->PrintInfo();
 	}
 }
 
-int MPU9250::probe()
+int ICM20948::probe()
 {
-	const uint8_t whoami = RegisterRead(Register::WHO_AM_I);
+	// select BANK_0
+	uint8_t cmd_bank_sel[2] {};
+	cmd_bank_sel[0] = static_cast<uint8_t>(Register::BANK_0::REG_BANK_SEL);
+	cmd_bank_sel[1] = 0;
+	transfer(cmd_bank_sel, cmd_bank_sel, sizeof(cmd_bank_sel));
+
+	const uint8_t whoami = RegisterRead(Register::BANK_0::WHO_AM_I);
+
+	for (int i = 0; i < 127; i++) {
+		uint8_t cmd_bank_read[2] {};
+		cmd_bank_read[0] = i | DIR_READ;
+		cmd_bank_read[1] = 0;
+		//PX4_INFO("%d: 0x%02x : 0x%02x", i, cmd_bank_read[0], cmd_bank_read[1]);
+		transfer(cmd_bank_read, cmd_bank_read, sizeof(cmd_bank_read));
+		//PX4_INFO("%d: 0x%02x : 0x%02x", i, cmd_bank_read[0], cmd_bank_read[1]);
+	}
 
 	if (whoami != WHOAMI) {
 		DEVICE_DEBUG("unexpected WHO_AM_I 0x%02x", whoami);
@@ -142,31 +161,26 @@ int MPU9250::probe()
 	return PX4_OK;
 }
 
-void MPU9250::RunImpl()
+void ICM20948::RunImpl()
 {
 	switch (_state) {
 	case STATE::RESET:
 		// PWR_MGMT_1: Device Reset
-		RegisterWrite(Register::PWR_MGMT_1, PWR_MGMT_1_BIT::H_RESET);
+		RegisterWrite(Register::BANK_0::PWR_MGMT_1, PWR_MGMT_1_BIT::DEVICE_RESET);
 		_reset_timestamp = hrt_absolute_time();
 		_state = STATE::WAIT_FOR_RESET;
-		ScheduleDelayed(100_ms);
+		ScheduleDelayed(10_ms);
 		break;
 
 	case STATE::WAIT_FOR_RESET:
 
 		// The reset value is 0x00 for all registers other than the registers below
-		//  Document Number: RM-MPU-9250A-00 Page 9 of 55
-		if ((RegisterRead(Register::WHO_AM_I) == WHOAMI)
-		    && (RegisterRead(Register::PWR_MGMT_1) == 0x01)) {
-
-			// SIGNAL_PATH_RESET: ensure the reset is performed properly
-			RegisterWrite(Register::SIGNAL_PATH_RESET,
-				      SIGNAL_PATH_RESET_BIT::GYRO_RESET | SIGNAL_PATH_RESET_BIT::ACCEL_RESET | SIGNAL_PATH_RESET_BIT::TEMP_RESET);
+		if ((RegisterRead(Register::BANK_0::WHO_AM_I) == WHOAMI)
+		    && (RegisterRead(Register::BANK_0::PWR_MGMT_1) == 0x41)) {
 
 			// if reset succeeded then configure
 			_state = STATE::CONFIGURE;
-			ScheduleDelayed(100_ms);
+			ScheduleDelayed(10_ms);
 
 		} else {
 			// RESET not complete
@@ -186,9 +200,9 @@ void MPU9250::RunImpl()
 	case STATE::CONFIGURE:
 		if (Configure()) {
 
-			// start AK8963 magnetometer (I2C aux)
-			if (_slave_ak8963_magnetometer) {
-				_slave_ak8963_magnetometer->Reset();
+			// start AK09916 magnetometer (I2C aux)
+			if (_slave_ak09916_magnetometer) {
+				_slave_ak09916_magnetometer->Reset();
 			}
 
 			// if configure succeeded then start reading from FIFO
@@ -217,26 +231,35 @@ void MPU9250::RunImpl()
 
 	case STATE::FIFO_READ: {
 			hrt_abstime timestamp_sample = 0;
+			uint8_t samples = 0;
 
 			if (_data_ready_interrupt_enabled) {
 				// re-schedule as watchdog timeout
 				ScheduleDelayed(10_ms);
-			}
 
-			if (_data_ready_interrupt_enabled && (hrt_elapsed_time(&timestamp_sample) < (_fifo_empty_interval_us / 2))) {
-				// use timestamp from data ready interrupt if enabled and seems valid
+				// timestamp set in data ready interrupt
+				if (!_force_fifo_count_check) {
+					samples = _fifo_read_samples.load();
+
+				} else {
+					const uint16_t fifo_count = FIFOReadCount();
+					samples = (fifo_count / sizeof(FIFO::DATA) / SAMPLES_PER_TRANSFER) * SAMPLES_PER_TRANSFER; // round down to nearest
+				}
+
 				timestamp_sample = _fifo_watermark_interrupt_timestamp;
-
-			} else {
-				// use the time now roughly corresponding with the last sample we'll pull from the FIFO
-				timestamp_sample = hrt_absolute_time();
 			}
-
-			const uint16_t fifo_count = FIFOReadCount();
-			const uint8_t samples = (fifo_count / sizeof(FIFO::DATA) / SAMPLES_PER_TRANSFER) *
-						SAMPLES_PER_TRANSFER; // round down to nearest
 
 			bool failure = false;
+
+			// manually check FIFO count if no samples from DRDY or timestamp looks bogus
+			if (!_data_ready_interrupt_enabled || (samples == 0)
+			    || (hrt_elapsed_time(&timestamp_sample) > (_fifo_empty_interval_us / 2))) {
+
+				// use the time now roughly corresponding with the last sample we'll pull from the FIFO
+				timestamp_sample = hrt_absolute_time();
+				const uint16_t fifo_count = FIFOReadCount();
+				samples = (fifo_count / sizeof(FIFO::DATA) / SAMPLES_PER_TRANSFER) * SAMPLES_PER_TRANSFER; // round down to nearest
+			}
 
 			if (samples > FIFO_MAX_SAMPLES) {
 				// not technically an overflow, but more samples than we expected or can publish
@@ -258,10 +281,15 @@ void MPU9250::RunImpl()
 			}
 
 			if (failure || hrt_elapsed_time(&_last_config_check_timestamp) > 10_ms) {
-				// check registers incrementally
-				if (RegisterCheck(_register_cfg[_checked_register], true)) {
+				// check BANK_0 & BANK_2 registers incrementally
+				if (RegisterCheck(_register_bank0_cfg[_checked_register_bank0], true)
+				    && RegisterCheck(_register_bank2_cfg[_checked_register_bank2], true)) {
+					// TODO: check bank 3
+
 					_last_config_check_timestamp = timestamp_sample;
-					_checked_register = (_checked_register + 1) % size_register_cfg;
+					_checked_register_bank0 = (_checked_register_bank0 + 1) % size_register_bank0_cfg;
+					_checked_register_bank2 = (_checked_register_bank2 + 1) % size_register_bank2_cfg;
+					_checked_register_bank3 = (_checked_register_bank3 + 1) % size_register_bank3_cfg;
 
 				} else {
 					// register check failed, force reconfigure
@@ -283,36 +311,36 @@ void MPU9250::RunImpl()
 	}
 }
 
-void MPU9250::ConfigureAccel()
+void ICM20948::ConfigureAccel()
 {
-	const uint8_t ACCEL_FS_SEL = RegisterRead(Register::ACCEL_CONFIG) & (Bit4 | Bit3); // [4:3] ACCEL_FS_SEL[1:0]
+	const uint8_t ACCEL_FS_SEL = RegisterRead(Register::BANK_2::ACCEL_CONFIG) & (Bit2 | Bit1); // 2:1 ACCEL_FS_SEL[1:0]
 
 	switch (ACCEL_FS_SEL) {
 	case ACCEL_FS_SEL_2G:
-		_px4_accel.set_scale(CONSTANTS_ONE_G / 16384);
-		_px4_accel.set_range(2 * CONSTANTS_ONE_G);
+		_px4_accel.set_scale(CONSTANTS_ONE_G / 16384.f);
+		_px4_accel.set_range(2.f * CONSTANTS_ONE_G);
 		break;
 
 	case ACCEL_FS_SEL_4G:
-		_px4_accel.set_scale(CONSTANTS_ONE_G / 8192);
-		_px4_accel.set_range(4 * CONSTANTS_ONE_G);
+		_px4_accel.set_scale(CONSTANTS_ONE_G / 8192.f);
+		_px4_accel.set_range(4.f * CONSTANTS_ONE_G);
 		break;
 
 	case ACCEL_FS_SEL_8G:
-		_px4_accel.set_scale(CONSTANTS_ONE_G / 4096);
-		_px4_accel.set_range(8 * CONSTANTS_ONE_G);
+		_px4_accel.set_scale(CONSTANTS_ONE_G / 4096.f);
+		_px4_accel.set_range(8.f * CONSTANTS_ONE_G);
 		break;
 
 	case ACCEL_FS_SEL_16G:
-		_px4_accel.set_scale(CONSTANTS_ONE_G / 2048);
-		_px4_accel.set_range(16 * CONSTANTS_ONE_G);
+		_px4_accel.set_scale(CONSTANTS_ONE_G / 2048.f);
+		_px4_accel.set_range(16.f * CONSTANTS_ONE_G);
 		break;
 	}
 }
 
-void MPU9250::ConfigureGyro()
+void ICM20948::ConfigureGyro()
 {
-	const uint8_t GYRO_FS_SEL = RegisterRead(Register::GYRO_CONFIG) & (Bit4 | Bit3); // [4:3] GYRO_FS_SEL[1:0]
+	const uint8_t GYRO_FS_SEL = RegisterRead(Register::BANK_2::GYRO_CONFIG_1) & (Bit2 | Bit1); // 2:1 GYRO_FS_SEL[1:0]
 
 	switch (GYRO_FS_SEL) {
 	case GYRO_FS_SEL_250_DPS:
@@ -337,32 +365,57 @@ void MPU9250::ConfigureGyro()
 	}
 }
 
-void MPU9250::ConfigureSampleRate(int sample_rate)
+void ICM20948::ConfigureSampleRate(int sample_rate)
 {
 	if (sample_rate == 0) {
-		sample_rate = 1000; // default to 1 kHz
+		sample_rate = 1000; // default to ~1 kHz
 	}
 
 	// round down to nearest FIFO sample dt * SAMPLES_PER_TRANSFER
 	const float min_interval = SAMPLES_PER_TRANSFER * FIFO_SAMPLE_DT;
 	_fifo_empty_interval_us = math::max(roundf((1e6f / (float)sample_rate) / min_interval) * min_interval, min_interval);
 
-	_fifo_gyro_samples = math::min((float)_fifo_empty_interval_us / (1e6f / GYRO_RATE), (float)FIFO_MAX_SAMPLES);
+	_fifo_gyro_samples = roundf(math::min((float)_fifo_empty_interval_us / (1e6f / GYRO_RATE), (float)FIFO_MAX_SAMPLES));
 
 	// recompute FIFO empty interval (us) with actual gyro sample limit
 	_fifo_empty_interval_us = _fifo_gyro_samples * (1e6f / GYRO_RATE);
 
-	_fifo_accel_samples = math::min(_fifo_empty_interval_us / (1e6f / ACCEL_RATE), (float)FIFO_MAX_SAMPLES);
+	_fifo_accel_samples = roundf(math::min(_fifo_empty_interval_us / (1e6f / ACCEL_RATE), (float)FIFO_MAX_SAMPLES));
 
 	_px4_accel.set_update_rate(1e6f / _fifo_empty_interval_us);
 	_px4_gyro.set_update_rate(1e6f / _fifo_empty_interval_us);
 }
 
-bool MPU9250::Configure()
+void ICM20948::SelectRegisterBank(enum REG_BANK_SEL_BIT bank)
+{
+	if (bank != _last_register_bank) {
+		// select BANK_0
+		uint8_t cmd_bank_sel[2] {};
+		cmd_bank_sel[0] = static_cast<uint8_t>(Register::BANK_0::REG_BANK_SEL);
+		cmd_bank_sel[1] = bank;
+		transfer(cmd_bank_sel, cmd_bank_sel, sizeof(cmd_bank_sel));
+
+		_last_register_bank = bank;
+	}
+}
+
+bool ICM20948::Configure()
 {
 	bool success = true;
 
-	for (const auto &reg : _register_cfg) {
+	for (const auto &reg : _register_bank0_cfg) {
+		if (!RegisterCheck(reg)) {
+			success = false;
+		}
+	}
+
+	for (const auto &reg : _register_bank2_cfg) {
+		if (!RegisterCheck(reg)) {
+			success = false;
+		}
+	}
+
+	for (const auto &reg : _register_bank3_cfg) {
 		if (!RegisterCheck(reg)) {
 			success = false;
 		}
@@ -374,13 +427,13 @@ bool MPU9250::Configure()
 	return success;
 }
 
-int MPU9250::DataReadyInterruptCallback(int irq, void *context, void *arg)
+int ICM20948::DataReadyInterruptCallback(int irq, void *context, void *arg)
 {
-	static_cast<MPU9250 *>(arg)->DataReady();
+	static_cast<ICM20948 *>(arg)->DataReady();
 	return 0;
 }
 
-void MPU9250::DataReady()
+void ICM20948::DataReady()
 {
 	perf_count(_drdy_interval_perf);
 
@@ -392,7 +445,7 @@ void MPU9250::DataReady()
 	}
 }
 
-bool MPU9250::DataReadyInterruptConfigure()
+bool ICM20948::DataReadyInterruptConfigure()
 {
 	if (_drdy_gpio == 0) {
 		return false;
@@ -402,7 +455,7 @@ bool MPU9250::DataReadyInterruptConfigure()
 	return px4_arch_gpiosetevent(_drdy_gpio, false, true, true, &DataReadyInterruptCallback, this) == 0;
 }
 
-bool MPU9250::DataReadyInterruptDisable()
+bool ICM20948::DataReadyInterruptDisable()
 {
 	if (_drdy_gpio == 0) {
 		return false;
@@ -411,7 +464,8 @@ bool MPU9250::DataReadyInterruptDisable()
 	return px4_arch_gpiosetevent(_drdy_gpio, false, false, false, nullptr, nullptr) == 0;
 }
 
-bool MPU9250::RegisterCheck(const register_config_t &reg_cfg, bool notify)
+template <typename T>
+bool ICM20948::RegisterCheck(const T &reg_cfg, bool notify)
 {
 	bool success = true;
 
@@ -440,23 +494,28 @@ bool MPU9250::RegisterCheck(const register_config_t &reg_cfg, bool notify)
 	return success;
 }
 
-uint8_t MPU9250::RegisterRead(Register reg)
+template <typename T>
+uint8_t ICM20948::RegisterRead(T reg)
 {
+	SelectRegisterBank(reg);
+
 	uint8_t cmd[2] {};
 	cmd[0] = static_cast<uint8_t>(reg) | DIR_READ;
-	set_frequency(SPI_SPEED); // low speed for regular registers
 	transfer(cmd, cmd, sizeof(cmd));
 	return cmd[1];
 }
 
-void MPU9250::RegisterWrite(Register reg, uint8_t value)
+template <typename T>
+void ICM20948::RegisterWrite(T reg, uint8_t value)
 {
+	SelectRegisterBank(reg);
+
 	uint8_t cmd[2] { (uint8_t)reg, value };
-	set_frequency(SPI_SPEED); // low speed for regular registers
 	transfer(cmd, cmd, sizeof(cmd));
 }
 
-void MPU9250::RegisterSetAndClearBits(Register reg, uint8_t setbits, uint8_t clearbits)
+template <typename T>
+void ICM20948::RegisterSetAndClearBits(T reg, uint8_t setbits, uint8_t clearbits)
 {
 	const uint8_t orig_val = RegisterRead(reg);
 	uint8_t val = orig_val;
@@ -472,12 +531,13 @@ void MPU9250::RegisterSetAndClearBits(Register reg, uint8_t setbits, uint8_t cle
 	RegisterWrite(reg, val);
 }
 
-uint16_t MPU9250::FIFOReadCount()
+uint16_t ICM20948::FIFOReadCount()
 {
+	SelectRegisterBank(REG_BANK_SEL_BIT::USER_BANK_0);
+
 	// read FIFO count
 	uint8_t fifo_count_buf[3] {};
-	fifo_count_buf[0] = static_cast<uint8_t>(Register::FIFO_COUNTH) | DIR_READ;
-	set_frequency(SPI_SPEED_SENSOR);
+	fifo_count_buf[0] = static_cast<uint8_t>(Register::BANK_0::FIFO_COUNTH) | DIR_READ;
 
 	if (transfer(fifo_count_buf, fifo_count_buf, sizeof(fifo_count_buf)) != PX4_OK) {
 		perf_count(_bad_transfer_perf);
@@ -487,13 +547,14 @@ uint16_t MPU9250::FIFOReadCount()
 	return combine(fifo_count_buf[1], fifo_count_buf[2]);
 }
 
-bool MPU9250::FIFORead(const hrt_abstime &timestamp_sample, uint16_t samples)
+bool ICM20948::FIFORead(const hrt_abstime &timestamp_sample, uint16_t samples)
 {
 	perf_begin(_transfer_perf);
 
+	SelectRegisterBank(REG_BANK_SEL_BIT::USER_BANK_0);
+
 	FIFOTransferBuffer buffer{};
-	const size_t transfer_size = math::min(samples * sizeof(FIFO::DATA) + 1, FIFO::SIZE);
-	set_frequency(SPI_SPEED_SENSOR);
+	const size_t transfer_size = math::min(samples * sizeof(FIFO::DATA) + 3, FIFO::SIZE);
 
 	if (transfer((uint8_t *)&buffer, (uint8_t *)&buffer, transfer_size) != PX4_OK) {
 		perf_end(_transfer_perf);
@@ -503,19 +564,56 @@ bool MPU9250::FIFORead(const hrt_abstime &timestamp_sample, uint16_t samples)
 
 	perf_end(_transfer_perf);
 
-	ProcessGyro(timestamp_sample, buffer, samples);
-	return ProcessAccel(timestamp_sample, buffer, samples);
+	const uint16_t fifo_count_bytes = combine(buffer.FIFO_COUNTH, buffer.FIFO_COUNTL);
+	const uint16_t fifo_count_samples = fifo_count_bytes / sizeof(FIFO::DATA);
+
+	if (fifo_count_samples == 0) {
+		perf_count(_fifo_empty_perf);
+		return false;
+	}
+
+	if (fifo_count_bytes >= FIFO::SIZE) {
+		perf_count(_fifo_overflow_perf);
+		FIFOReset();
+		return false;
+	}
+
+	const uint16_t valid_samples = math::min(samples, fifo_count_samples);
+
+	if (fifo_count_samples < samples) {
+		// force check if there is somehow fewer samples actually in the FIFO (potentially a serious error)
+		_force_fifo_count_check = true;
+
+	} else if (fifo_count_samples >= samples + 2) {
+		// if we're more than a couple samples behind force FIFO_COUNT check
+		_force_fifo_count_check = true;
+
+	} else {
+		// skip earlier FIFO_COUNT and trust DRDY count if we're in sync
+		_force_fifo_count_check = false;
+	}
+
+	if (valid_samples > 0) {
+		ProcessGyro(timestamp_sample, buffer, valid_samples);
+
+		if (ProcessAccel(timestamp_sample, buffer, valid_samples)) {
+			return true;
+		}
+	}
+
+	// force FIFO count check if there was any other error
+	_force_fifo_count_check = true;
+
+	return false;
 }
 
-void MPU9250::FIFOReset()
+void ICM20948::FIFOReset()
 {
 	perf_count(_fifo_reset_perf);
 
-	// FIFO_EN: disable FIFO
-	RegisterWrite(Register::FIFO_EN, 0);
-
-	// USER_CTRL: reset FIFO
-	RegisterSetAndClearBits(Register::USER_CTRL, USER_CTRL_BIT::FIFO_RST, USER_CTRL_BIT::FIFO_EN);
+	// FIFO_RST: reset FIFO
+	RegisterSetBits(Register::BANK_0::FIFO_RST, FIFO_RST_BIT::FIFO_RESET);
+	RegisterClearBits(Register::BANK_0::FIFO_RST, FIFO_RST_BIT::FIFO_RESET);
 
 	// reset while FIFO is disabled
 	_data_ready_count.store(0);
@@ -528,7 +626,8 @@ static bool fifo_accel_equal(const FIFO::DATA &f0, const FIFO::DATA &f1)
 	return (memcmp(&f0.ACCEL_XOUT_H, &f1.ACCEL_XOUT_H, 6) == 0);
 }
 
-bool MPU9250::ProcessAccel(const hrt_abstime &timestamp_sample, const FIFOTransferBuffer &buffer, const uint8_t samples)
+bool ICM20948::ProcessAccel(const hrt_abstime &timestamp_sample, const FIFOTransferBuffer &buffer,
+			    const uint8_t samples)
 {
 	PX4Accelerometer::FIFOSample accel;
 	accel.timestamp_sample = timestamp_sample;
@@ -579,7 +678,7 @@ bool MPU9250::ProcessAccel(const hrt_abstime &timestamp_sample, const FIFOTransf
 	return !bad_data;
 }
 
-void MPU9250::ProcessGyro(const hrt_abstime &timestamp_sample, const FIFOTransferBuffer &buffer, const uint8_t samples)
+void ICM20948::ProcessGyro(const hrt_abstime &timestamp_sample, const FIFOTransferBuffer &buffer, const uint8_t samples)
 {
 	PX4Gyroscope::FIFOSample gyro;
 	gyro.timestamp_sample = timestamp_sample;
@@ -603,12 +702,13 @@ void MPU9250::ProcessGyro(const hrt_abstime &timestamp_sample, const FIFOTransfe
 	_px4_gyro.updateFIFO(gyro);
 }
 
-void MPU9250::UpdateTemperature()
+void ICM20948::UpdateTemperature()
 {
+	SelectRegisterBank(REG_BANK_SEL_BIT::USER_BANK_0);
+
 	// read current temperature
 	uint8_t temperature_buf[3] {};
-	temperature_buf[0] = static_cast<uint8_t>(Register::TEMP_OUT_H) | DIR_READ;
-	set_frequency(SPI_SPEED_SENSOR);
+	temperature_buf[0] = static_cast<uint8_t>(Register::BANK_0::TEMP_OUT_H) | DIR_READ;
 
 	if (transfer(temperature_buf, temperature_buf, sizeof(temperature_buf)) != PX4_OK) {
 		perf_count(_bad_transfer_perf);
@@ -622,42 +722,43 @@ void MPU9250::UpdateTemperature()
 		_px4_accel.set_temperature(TEMP_degC);
 		_px4_gyro.set_temperature(TEMP_degC);
 
-		if (_slave_ak8963_magnetometer) {
-			_slave_ak8963_magnetometer->set_temperature(TEMP_degC);
+		if (_slave_ak09916_magnetometer) {
+			_slave_ak09916_magnetometer->set_temperature(TEMP_degC);
 		}
 	}
 }
 
-void MPU9250::I2CSlaveRegisterStartRead(uint8_t slave_i2c_addr, uint8_t reg)
+void ICM20948::I2CSlaveRegisterStartRead(uint8_t slave_i2c_addr, uint8_t reg)
 {
 	I2CSlaveExternalSensorDataEnable(slave_i2c_addr, reg, 1);
 }
 
-void MPU9250::I2CSlaveRegisterWrite(uint8_t slave_i2c_addr, uint8_t reg, uint8_t val)
+void ICM20948::I2CSlaveRegisterWrite(uint8_t slave_i2c_addr, uint8_t reg, uint8_t val)
 {
-	RegisterWrite(Register::I2C_SLV0_ADDR, slave_i2c_addr);
-	RegisterWrite(Register::I2C_SLV0_REG, reg);
-	RegisterWrite(Register::I2C_SLV0_DO, val);
-	RegisterSetBits(Register::I2C_SLV0_CTRL, 1 | I2C_SLV0_CTRL_BIT::I2C_SLV0_EN);
+	RegisterWrite(Register::BANK_3::I2C_SLV0_ADDR, slave_i2c_addr);
+	RegisterWrite(Register::BANK_3::I2C_SLV0_REG, reg);
+	RegisterWrite(Register::BANK_3::I2C_SLV0_DO, val);
+	RegisterSetBits(Register::BANK_3::I2C_SLV0_CTRL, 1 | I2C_SLV0_CTRL_BIT::I2C_SLV0_EN);
 }
 
-void MPU9250::I2CSlaveExternalSensorDataEnable(uint8_t slave_i2c_addr, uint8_t reg, uint8_t size)
+void ICM20948::I2CSlaveExternalSensorDataEnable(uint8_t slave_i2c_addr, uint8_t reg, uint8_t size)
 {
 	//RegisterWrite(Register::I2C_SLV0_ADDR, 0); // disable slave
-	RegisterWrite(Register::I2C_SLV0_ADDR, slave_i2c_addr | I2C_SLV0_ADDR_BIT::I2C_SLV0_RNW);
-	RegisterWrite(Register::I2C_SLV0_REG, reg);
-	RegisterWrite(Register::I2C_SLV0_CTRL, size | I2C_SLV0_CTRL_BIT::I2C_SLV0_EN);
+	RegisterWrite(Register::BANK_3::I2C_SLV0_ADDR, slave_i2c_addr | I2C_SLV0_ADDR_BIT::I2C_SLV0_RNW);
+	RegisterWrite(Register::BANK_3::I2C_SLV0_REG, reg);
+	RegisterWrite(Register::BANK_3::I2C_SLV0_CTRL, size | I2C_SLV0_CTRL_BIT::I2C_SLV0_EN);
 }
 
-bool MPU9250::I2CSlaveExternalSensorDataRead(uint8_t *buffer, uint8_t length)
+bool ICM20948::I2CSlaveExternalSensorDataRead(uint8_t *buffer, uint8_t length)
 {
 	bool ret = false;
 
 	if (buffer != nullptr && length <= 24) {
+		SelectRegisterBank(REG_BANK_SEL_BIT::USER_BANK_0);
+
 		// max EXT_SENS_DATA 24 bytes
 		uint8_t transfer_buffer[24 + 1] {};
-		transfer_buffer[0] = static_cast<uint8_t>(Register::EXT_SENS_DATA_00) | DIR_READ;
-		set_frequency(SPI_SPEED_SENSOR);
+		transfer_buffer[0] = static_cast<uint8_t>(Register::BANK_0::EXT_SLV_SENS_DATA_00) | DIR_READ;
 
 		if (transfer(transfer_buffer, transfer_buffer, length + 1) == PX4_OK) {
 			ret = true;
