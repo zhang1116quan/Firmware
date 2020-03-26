@@ -127,3 +127,14 @@ PARAM_DEFINE_INT32(FD_EXT_ATS_EN, 0);
  * @group Failure Detector
  */
 PARAM_DEFINE_INT32(FD_EXT_ATS_TRIG, 1900);
+
+/**
+ * Enable checks on ESCs that report their arming state.
+ *
+ *
+ * @boolean
+ * @reboot_required true
+ *
+ * @group Failure Detector
+ */
+PARAM_DEFINE_INT32(FD_ESCS_EN, 1);
