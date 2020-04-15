@@ -2129,7 +2129,7 @@ Commander::run()
 
 					}
 
-				} else if (hrt_elapsed_time(&_time_at_takeoff) < 3_s) {
+				} else if ((_param_com_lkdown_tko.get() > 0) && (hrt_elapsed_time(&_time_at_takeoff) < _param_com_lkdown_tko.get())) {
 					// This handles the case where something fails during the early takeoff phase
 					if (!_lockdown_triggered) {
 

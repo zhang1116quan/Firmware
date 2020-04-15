@@ -912,3 +912,19 @@ PARAM_DEFINE_FLOAT(COM_KILL_DISARM, 5.0f);
  * @increment 1
  */
 PARAM_DEFINE_FLOAT(COM_CPU_MAX, 90.0f);
+
+/**
+ * Time-out for detecting a failure after takeoff
+ *
+ * A non-zero, positive value specifies the timeframe in seconds within Failure Detector is allowed to put the vehicle into
+ * a lockdown state if attitude exceeds the defined limits.
+ *
+ * A zero or negative value means that the check is disabled.
+ *
+ * @group Commander
+ * @unit s
+ * @min -1.0
+ * @max 5.0
+ * @decimal 3
+ */
+PARAM_DEFINE_FLOAT(COM_LKDOWN_TKO, 3.0f);
