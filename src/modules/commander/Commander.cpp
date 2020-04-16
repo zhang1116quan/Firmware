@@ -2127,10 +2127,10 @@ Commander::run()
 			if (_failure_detector.isFailure()) {
 
 				if (!_have_taken_off_since_arming) {
-					arm_disarm(false, true, &mavlink_log_pub, "Failure detector");
-					_status_changed = true;
 
 					if (status.failure_detector_status & vehicle_status_s::FAILURE_ARM_ESC) {
+						arm_disarm(false, true, &mavlink_log_pub, "Failure detector");
+						_status_changed = true;
 						mavlink_log_critical(&mavlink_log_pub, "ESCs did not respond to arm request");
 					}
 
