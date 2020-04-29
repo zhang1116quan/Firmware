@@ -2126,7 +2126,10 @@ Commander::run()
 
 			if (_failure_detector.isFailure()) {
 
-				if (!_have_taken_off_since_arming) {
+				const hrt_abstime time_at_arm = armed.armed_time_ms * 1000;
+
+				if (hrt_elapsed_time(&time_at_arm) < 500_ms) {
+					// 500ms is the PWM spoolup time. Within this timeframe controllers are not affecting actuator_outputs
 
 					if (status.failure_detector_status & vehicle_status_s::FAILURE_ARM_ESC) {
 						arm_disarm(false, true, &mavlink_log_pub, "Failure detector");
