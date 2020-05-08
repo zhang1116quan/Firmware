@@ -143,8 +143,6 @@ private:
 
 	perf_counter_t	_loop_perf;			/**< loop performance counter */
 
-	DataValidator	_airspeed_validator;		/**< data validator to monitor airspeed */
-
 #ifdef ADC_AIRSPEED_VOLTAGE_CHANNEL
 
 	hrt_abstime	_last_adc{0};			/**< last time we took input from the ADC */
@@ -206,9 +204,6 @@ Sensors::Sensors(bool hil_enabled) :
 {
 	initialize_parameter_handles(_parameter_handles);
 
-	_airspeed_validator.set_timeout(300000);
-	_airspeed_validator.set_equal_value_threshold(100);
-
 	_vehicle_acceleration.Start();
 	_vehicle_angular_velocity.Start();
 	_vehicle_air_data.Start();
@@ -265,14 +260,6 @@ void Sensors::diff_pres_poll()
 
 		airspeed_s airspeed{};
 		airspeed.timestamp = diff_pres.timestamp;
-
-		/* push data into validator */
-		float airspeed_input[3] = { diff_pres.differential_pressure_raw_pa, diff_pres.temperature, 0.0f };
-
-		_airspeed_validator.put(airspeed.timestamp, airspeed_input, diff_pres.error_count,
-					ORB_PRIO_HIGH);
-
-		airspeed.confidence = _airspeed_validator.confidence(hrt_absolute_time());
 
 		enum AIRSPEED_SENSOR_MODEL smodel;
 
@@ -610,11 +597,6 @@ int Sensors::task_spawn(int argc, char *argv[])
 int Sensors::print_status()
 {
 	_voted_sensors_update.printStatus();
-
-	PX4_INFO_RAW("\n");
-
-	PX4_INFO("Airspeed status:");
-	_airspeed_validator.print();
 
 	PX4_INFO_RAW("\n");
 	_vehicle_acceleration.PrintStatus();

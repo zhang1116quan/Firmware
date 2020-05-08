@@ -203,10 +203,6 @@ bool MavlinkStreamHighLatency2::write_airspeed(mavlink_high_latency2_t *msg)
 	airspeed_s airspeed;
 
 	if (_airspeed_sub.update(&airspeed)) {
-		if (airspeed.confidence < 0.95f) { // the same threshold as for the commander
-			msg->failure_flags |= HL_FAILURE_FLAG_DIFFERENTIAL_PRESSURE;
-		}
-
 		return true;
 	}
 
