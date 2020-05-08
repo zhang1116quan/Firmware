@@ -55,7 +55,6 @@ struct airspeed_validator_update_data {
 	float airspeed_indicated_raw;
 	float airspeed_true_raw;
 	uint64_t airspeed_timestamp;
-	float airspeed_confidence;
 	float lpos_vx;
 	float lpos_vy;
 	float lpos_vz;
@@ -84,7 +83,6 @@ public:
 	float get_TAS() { return _TAS; }
 	bool get_airspeed_valid() { return _airspeed_valid; }
 	float get_EAS_scale() { return _EAS_scale;}
-	float get_airspeed_confidence() { return _airspeed_confidence; }
 
 	wind_estimate_s get_wind_estimator_states(uint64_t timestamp);
 
@@ -126,7 +124,6 @@ private:
 	float _EAS{0.0f}; ///< equivalent airspeed in m/s
 	float _TAS{0.0f}; ///< true airspeed in m/s
 	float _EAS_scale{1.0f}; ///< scale factor from IAS to EAS
-	float _airspeed_confidence{0.0f}; ///< metric from airspeed driver indicating current confidence level of the data
 
 	uint64_t	_time_last_airspeed{0};		///< time last airspeed measurement was received (uSec)
 

@@ -46,9 +46,6 @@ AirspeedValidator::update_airspeed_validator(const airspeed_validator_update_dat
 	// get indicated airspeed from input data (raw airspeed)
 	_IAS = input_data.airspeed_indicated_raw;
 
-	// get the current confidence level of the airspeed data from the driver
-	_airspeed_confidence = input_data.airspeed_confidence;
-
 	// to be able to detect missing data, save timestamp (used in data_missing check)
 	if (input_data.airspeed_timestamp != _previous_airspeed_timestamp && input_data.airspeed_timestamp > 0) {
 		_time_last_airspeed = input_data.timestamp;

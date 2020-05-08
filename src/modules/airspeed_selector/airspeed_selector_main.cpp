@@ -322,7 +322,6 @@ AirspeedModule::Run()
 			input_data.airspeed_true_raw = airspeed_raw.true_airspeed_m_s;
 			input_data.airspeed_timestamp = airspeed_raw.timestamp;
 			input_data.air_temperature_celsius = airspeed_raw.air_temperature_celsius;
-			input_data.airspeed_confidence = airspeed_raw.confidence;
 
 			/* update in_fixed_wing_flight for the current airspeed sensor validator */
 			/* takeoff situation is active from start till one of the sensors' IAS or groundspeed_EAS is above stall speed */
@@ -536,7 +535,6 @@ void AirspeedModule::select_airspeed_and_publish()
 	airspeed_validated.true_airspeed_m_s = NAN;
 	airspeed_validated.airspeed_sensor_measurement_valid = false;
 	airspeed_validated.selected_airspeed_index = _valid_airspeed_index;
-	airspeed_validated.confidence = NAN;
 
 	switch (_valid_airspeed_index) {
 	case airspeed_index::DISABLED_INDEX:
@@ -559,7 +557,6 @@ void AirspeedModule::select_airspeed_and_publish()
 		airspeed_validated.equivalent_ground_minus_wind_m_s = _ground_minus_wind_EAS;
 		airspeed_validated.true_ground_minus_wind_m_s = _ground_minus_wind_TAS;
 		airspeed_validated.airspeed_sensor_measurement_valid = true;
-		airspeed_validated.confidence = _airspeed_validator[_valid_airspeed_index - 1].get_airspeed_confidence();
 		break;
 	}
 

@@ -10,5 +10,3 @@ float32 true_ground_minus_wind_m_s 		# TAS calculated from groundspeed - windspe
 bool airspeed_sensor_measurement_valid # True if data from at least one airspeed sensor is declared valid.
 
 int8 selected_airspeed_index # 1-3: airspeed sensor index, 0: groundspeed-windspeed, -1: airspeed invalid
-
-float32 confidence		# confidence value from 0 to 1 for the selected sensor (NAN if index < 1)
