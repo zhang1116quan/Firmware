@@ -37,13 +37,11 @@
 #include <drivers/drv_hrt.h>
 #include <lib/cdev/CDev.hpp>
 #include <lib/conversion/rotation.h>
-#include <lib/drivers/device/integrator.h>
 #include <px4_platform_common/module_params.h>
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/topics/sensor_gyro.h>
 #include <uORB/topics/sensor_gyro_fifo.h>
-#include <uORB/topics/sensor_gyro_integrated.h>
 #include <uORB/topics/sensor_gyro_status.h>
 
 class PX4Gyroscope : public cdev::CDev, public ModuleParams
@@ -95,12 +93,9 @@ private:
 
 	uORB::PublicationQueuedMulti<sensor_gyro_s>      _sensor_pub;
 	uORB::PublicationMulti<sensor_gyro_fifo_s>       _sensor_fifo_pub;
-	uORB::PublicationMulti<sensor_gyro_integrated_s> _sensor_integrated_pub;
 	uORB::PublicationMulti<sensor_gyro_status_s>     _sensor_status_pub;
 
 	hrt_abstime	_status_last_publish{0};
-
-	Integrator		_integrator{5000, true}; // 200 Hz default
 
 	matrix::Vector3f	_calibration_offset{0.f, 0.f, 0.f};
 
@@ -135,7 +130,6 @@ private:
 	uint8_t			_integrator_fifo_samples{0};
 
 	DEFINE_PARAMETERS(
-		(ParamInt<px4::params::IMU_GYRO_RATEMAX>) _param_imu_gyro_rate_max,
-		(ParamInt<px4::params::IMU_INTEG_RATE>) _param_imu_integ_rate
+		(ParamInt<px4::params::IMU_GYRO_RATEMAX>) _param_imu_gyro_rate_max
 	)
 };

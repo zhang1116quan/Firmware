@@ -273,10 +273,6 @@ rtps:
     id: 120
   - msg: sensor_gyro_status
     id: 121
-  - msg: sensor_accel_integrated
-    id: 122
-  - msg: sensor_gyro_integrated
-    id: 123
   - msg: vehicle_imu
     id: 124
   - msg: vehicle_angular_acceleration

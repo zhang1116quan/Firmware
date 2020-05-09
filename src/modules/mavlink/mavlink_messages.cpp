@@ -84,11 +84,9 @@
 #include <uORB/topics/orbit_status.h>
 #include <uORB/topics/position_controller_status.h>
 #include <uORB/topics/position_setpoint_triplet.h>
-#include <uORB/topics/sensor_accel_integrated.h>
 #include <uORB/topics/sensor_accel_status.h>
 #include <uORB/topics/sensor_baro.h>
 #include <uORB/topics/sensor_combined.h>
-#include <uORB/topics/sensor_gyro_integrated.h>
 #include <uORB/topics/sensor_gyro_status.h>
 #include <uORB/topics/sensor_mag.h>
 #include <uORB/topics/sensor_selection.h>
@@ -106,6 +104,7 @@
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
+#include <uORB/topics/vehicle_imu.h>
 #include <uORB/topics/vehicle_magnetometer.h>
 #include <uORB/topics/vehicle_odometry.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
@@ -1062,12 +1061,11 @@ public:
 
 	unsigned get_size() override
 	{
-		return _raw_accel_sub.advertised() ? (MAVLINK_MSG_ID_SCALED_IMU_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
+		return _raw_imu_sub.advertised() ? (MAVLINK_MSG_ID_SCALED_IMU_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
 	}
 
 private:
-	uORB::Subscription _raw_accel_sub{ORB_ID(sensor_accel_integrated), 0};
-	uORB::Subscription _raw_gyro_sub{ORB_ID(sensor_gyro_integrated), 0};
+	uORB::Subscription _raw_imu_sub{ORB_ID(vehicle_imu), 0};
 	uORB::Subscription _raw_mag_sub{ORB_ID(sensor_mag), 0};
 
 	// do not allow top copy this class
@@ -1080,28 +1078,25 @@ protected:
 
 	bool send(const hrt_abstime t) override
 	{
-		if (_raw_accel_sub.updated() || _raw_gyro_sub.updated() || _raw_mag_sub.updated()) {
+		if (_raw_imu_sub.updated() || _raw_mag_sub.updated()) {
 
-			sensor_accel_integrated_s sensor_accel{};
-			_raw_accel_sub.copy(&sensor_accel);
-
-			sensor_gyro_integrated_s sensor_gyro{};
-			_raw_gyro_sub.copy(&sensor_gyro);
+			vehicle_imu_s imu{};
+			_raw_imu_sub.copy(&imu);
 
 			sensor_mag_s sensor_mag{};
 			_raw_mag_sub.copy(&sensor_mag);
 
 			mavlink_scaled_imu_t msg{};
 
-			msg.time_boot_ms = sensor_accel.timestamp / 1000;
+			msg.time_boot_ms = imu.timestamp / 1000;
 
 			// Accelerometer in mG
-			const float accel_dt_inv = 1.e6f / (float)sensor_accel.dt;
-			const Vector3f accel = Vector3f{sensor_accel.delta_velocity} * accel_dt_inv * 1000.0f / CONSTANTS_ONE_G;
+			const float accel_dt_inv = 1.e6f / (float)imu.dt_accel;
+			const Vector3f accel = Vector3f{imu.delta_velocity} * accel_dt_inv * 1000.0f / CONSTANTS_ONE_G;
 
 			// Gyroscope in mrad/s
-			const float gyro_dt_inv = 1.e6f / (float)sensor_gyro.dt;
-			const Vector3f gyro = Vector3f{sensor_gyro.delta_angle} * gyro_dt_inv * 1000.0f;
+			const float gyro_dt_inv = 1.e6f / (float)imu.dt_gyro;
+			const Vector3f gyro = Vector3f{imu.delta_angle} * gyro_dt_inv * 1000.0f;
 
 			msg.xacc = (int16_t)accel(0);
 			msg.yacc = (int16_t)accel(1);
@@ -1152,12 +1147,11 @@ public:
 
 	unsigned get_size() override
 	{
-		return _raw_accel_sub.advertised() ? (MAVLINK_MSG_ID_SCALED_IMU2_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
+		return _raw_imu_sub.advertised() ? (MAVLINK_MSG_ID_SCALED_IMU2_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
 	}
 
 private:
-	uORB::Subscription _raw_accel_sub{ORB_ID(sensor_accel_integrated), 1};
-	uORB::Subscription _raw_gyro_sub{ORB_ID(sensor_gyro_integrated), 1};
+	uORB::Subscription _raw_imu_sub{ORB_ID(vehicle_imu), 1};
 	uORB::Subscription _raw_mag_sub{ORB_ID(sensor_mag), 1};
 
 	// do not allow top copy this class
@@ -1170,28 +1164,25 @@ protected:
 
 	bool send(const hrt_abstime t) override
 	{
-		if (_raw_accel_sub.updated() || _raw_gyro_sub.updated() || _raw_mag_sub.updated()) {
+		if (_raw_imu_sub.updated() || _raw_mag_sub.updated()) {
 
-			sensor_accel_integrated_s sensor_accel{};
-			_raw_accel_sub.copy(&sensor_accel);
-
-			sensor_gyro_integrated_s sensor_gyro{};
-			_raw_gyro_sub.copy(&sensor_gyro);
+			vehicle_imu_s imu{};
+			_raw_imu_sub.copy(&imu);
 
 			sensor_mag_s sensor_mag{};
 			_raw_mag_sub.copy(&sensor_mag);
 
 			mavlink_scaled_imu2_t msg{};
 
-			msg.time_boot_ms = sensor_accel.timestamp / 1000;
+			msg.time_boot_ms = imu.timestamp / 1000;
 
 			// Accelerometer in mG
-			const float accel_dt_inv = 1.e6f / (float)sensor_accel.dt;
-			const Vector3f accel = Vector3f{sensor_accel.delta_velocity} * accel_dt_inv * 1000.0f / CONSTANTS_ONE_G;
+			const float accel_dt_inv = 1.e6f / (float)imu.dt_accel;
+			const Vector3f accel = Vector3f{imu.delta_velocity} * accel_dt_inv * 1000.0f / CONSTANTS_ONE_G;
 
 			// Gyroscope in mrad/s
-			const float gyro_dt_inv = 1.e6f / (float)sensor_gyro.dt;
-			const Vector3f gyro = Vector3f{sensor_gyro.delta_angle} * gyro_dt_inv * 1000.0f;
+			const float gyro_dt_inv = 1.e6f / (float)imu.dt_gyro;
+			const Vector3f gyro = Vector3f{imu.delta_angle} * gyro_dt_inv * 1000.0f;
 
 			msg.xacc = (int16_t)accel(0);
 			msg.yacc = (int16_t)accel(1);
@@ -1241,12 +1232,11 @@ public:
 
 	unsigned get_size() override
 	{
-		return _raw_accel_sub.advertised() ? (MAVLINK_MSG_ID_SCALED_IMU3_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
+		return _raw_imu_sub.advertised() ? (MAVLINK_MSG_ID_SCALED_IMU3_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
 	}
 
 private:
-	uORB::Subscription _raw_accel_sub{ORB_ID(sensor_accel_integrated), 2};
-	uORB::Subscription _raw_gyro_sub{ORB_ID(sensor_gyro_integrated), 2};
+	uORB::Subscription _raw_imu_sub{ORB_ID(vehicle_imu), 2};
 	uORB::Subscription _raw_mag_sub{ORB_ID(sensor_mag), 2};
 
 	// do not allow top copy this class
@@ -1259,28 +1249,25 @@ protected:
 
 	bool send(const hrt_abstime t) override
 	{
-		if (_raw_accel_sub.updated() || _raw_gyro_sub.updated() || _raw_mag_sub.updated()) {
+		if (_raw_imu_sub.updated() || _raw_mag_sub.updated()) {
 
-			sensor_accel_integrated_s sensor_accel{};
-			_raw_accel_sub.copy(&sensor_accel);
-
-			sensor_gyro_integrated_s sensor_gyro{};
-			_raw_gyro_sub.copy(&sensor_gyro);
+			vehicle_imu_s imu{};
+			_raw_imu_sub.copy(&imu);
 
 			sensor_mag_s sensor_mag{};
 			_raw_mag_sub.copy(&sensor_mag);
 
 			mavlink_scaled_imu3_t msg{};
 
-			msg.time_boot_ms = sensor_accel.timestamp / 1000;
+			msg.time_boot_ms = imu.timestamp / 1000;
 
 			// Accelerometer in mG
-			const float accel_dt_inv = 1.e6f / (float)sensor_accel.dt;
-			const Vector3f accel = Vector3f{sensor_accel.delta_velocity} * accel_dt_inv * 1000.0f / CONSTANTS_ONE_G;
+			const float accel_dt_inv = 1.e6f / (float)imu.dt_accel;
+			const Vector3f accel = Vector3f{imu.delta_velocity} * accel_dt_inv * 1000.0f / CONSTANTS_ONE_G;
 
 			// Gyroscope in mrad/s
-			const float gyro_dt_inv = 1.e6f / (float)sensor_gyro.dt;
-			const Vector3f gyro = Vector3f{sensor_gyro.delta_angle} * gyro_dt_inv * 1000.0f;
+			const float gyro_dt_inv = 1.e6f / (float)imu.dt_gyro;
+			const Vector3f gyro = Vector3f{imu.delta_angle} * gyro_dt_inv * 1000.0f;
 
 			msg.xacc = (int16_t)accel(0);
 			msg.yacc = (int16_t)accel(1);

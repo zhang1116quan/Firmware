@@ -37,14 +37,12 @@
 #include <drivers/drv_hrt.h>
 #include <lib/cdev/CDev.hpp>
 #include <lib/conversion/rotation.h>
-#include <lib/drivers/device/integrator.h>
 #include <lib/ecl/geo/geo.h>
 #include <px4_platform_common/module_params.h>
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/topics/sensor_accel.h>
 #include <uORB/topics/sensor_accel_fifo.h>
-#include <uORB/topics/sensor_accel_integrated.h>
 #include <uORB/topics/sensor_accel_status.h>
 
 class PX4Accelerometer : public cdev::CDev, public ModuleParams
@@ -94,12 +92,9 @@ private:
 
 	uORB::PublicationQueuedMulti<sensor_accel_s>      _sensor_pub;
 	uORB::PublicationMulti<sensor_accel_fifo_s>       _sensor_fifo_pub;
-	uORB::PublicationMulti<sensor_accel_integrated_s> _sensor_integrated_pub;
 	uORB::PublicationMulti<sensor_accel_status_s>     _sensor_status_pub;
 
 	hrt_abstime	_status_last_publish{0};
-
-	Integrator		_integrator{5000, false}; // 200 Hz default
 
 	matrix::Vector3f	_calibration_scale{1.f, 1.f, 1.f};
 	matrix::Vector3f	_calibration_offset{0.f, 0.f, 0.f};
@@ -132,8 +127,4 @@ private:
 	uint8_t			_integrator_reset_samples{4};
 	uint8_t			_integrator_samples{0};
 	uint8_t			_integrator_fifo_samples{0};
-
-	DEFINE_PARAMETERS(
-		(ParamInt<px4::params::IMU_INTEG_RATE>) _param_imu_integ_rate
-	)
 };
