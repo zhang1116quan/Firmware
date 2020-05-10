@@ -43,8 +43,7 @@ namespace sensors
 
 VehicleAcceleration::VehicleAcceleration() :
 	ModuleParams(nullptr),
-	WorkItem(MODULE_NAME, px4::wq_configurations::navigation_and_controllers),
-	_corrections(this, SensorCorrections::SensorType::Accelerometer)
+	WorkItem(MODULE_NAME, px4::wq_configurations::navigation_and_controllers)
 {
 	_lp_filter.set_cutoff_frequency(kInitialRateHz, _param_imu_accel_cutoff.get());
 }
@@ -163,7 +162,7 @@ bool VehicleAcceleration::SensorSelectionUpdate(bool force)
 						// clear bias and corrections
 						_bias.zero();
 
-						_corrections.set_device_id(report.device_id);
+						_calibration.set_device_id(report.device_id);
 
 						// reset sample interval accumulator on sensor change
 						_timestamp_sample_last = 0;
@@ -192,7 +191,7 @@ void VehicleAcceleration::ParametersUpdate(bool force)
 
 		updateParams();
 
-		_corrections.ParametersUpdate();
+		_calibration.ParametersUpdate();
 	}
 }
 
@@ -201,7 +200,7 @@ void VehicleAcceleration::Run()
 	// update corrections first to set _selected_sensor
 	bool selection_updated = SensorSelectionUpdate();
 
-	_corrections.SensorCorrectionsUpdate(selection_updated);
+	_calibration.SensorCorrectionsUpdate(selection_updated);
 	SensorBiasUpdate(selection_updated);
 	ParametersUpdate();
 
@@ -241,7 +240,7 @@ void VehicleAcceleration::Run()
 
 			if (!sensor_updated) {
 				// correct for in-run bias errors
-				const Vector3f accel = _corrections.Correct(accel_filtered) - _bias;
+				const Vector3f accel = _calibration.Correct(accel_filtered) - _bias;
 
 				// Publish vehicle_acceleration
 				vehicle_acceleration_s v_acceleration;
@@ -264,7 +263,7 @@ void VehicleAcceleration::PrintStatus()
 
 	PX4_INFO("sample rate: %.3f Hz", (double)_update_rate_hz);
 
-	_corrections.PrintStatus();
+	_calibration.PrintStatus();
 }
 
 } // namespace sensors

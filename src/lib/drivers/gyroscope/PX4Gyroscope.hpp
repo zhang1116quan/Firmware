@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2018 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2018-2020 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,26 +33,21 @@
 
 #pragma once
 
-#include <drivers/drv_gyro.h>
 #include <drivers/drv_hrt.h>
-#include <lib/cdev/CDev.hpp>
 #include <lib/conversion/rotation.h>
 #include <lib/drivers/device/integrator.h>
 #include <px4_platform_common/module_params.h>
-#include <uORB/PublicationMulti.hpp>
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/topics/sensor_gyro.h>
 #include <uORB/topics/sensor_gyro_fifo.h>
 #include <uORB/topics/sensor_gyro_integrated.h>
 #include <uORB/topics/sensor_gyro_status.h>
 
-class PX4Gyroscope : public cdev::CDev, public ModuleParams
+class PX4Gyroscope : public ModuleParams
 {
 public:
 	PX4Gyroscope(uint32_t device_id, ORB_PRIO priority = ORB_PRIO_DEFAULT, enum Rotation rotation = ROTATION_NONE);
 	~PX4Gyroscope() override;
-
-	int	ioctl(cdev::file_t *filp, int cmd, unsigned long arg) override;
 
 	uint32_t get_device_id() const { return _device_id; }
 
@@ -67,7 +62,7 @@ public:
 	void set_temperature(float temperature) { _temperature = temperature; }
 	void set_update_rate(uint16_t rate);
 
-	void update(hrt_abstime timestamp_sample, float x, float y, float z);
+	void update(const hrt_abstime &timestamp_sample, float x, float y, float z);
 
 	void print_status();
 
@@ -102,13 +97,9 @@ private:
 
 	Integrator		_integrator{5000, true}; // 200 Hz default
 
-	matrix::Vector3f	_calibration_offset{0.f, 0.f, 0.f};
-
 	matrix::Vector3f _delta_angle_prev{0.f, 0.f, 0.f};	// delta angle from the previous IMU measurement
 	float _vibration_metric{0.f};	// high frequency vibration level in the IMU delta angle data (rad)
 	float _coning_vibration{0.f};	// Level of coning vibration in the IMU delta angles (rad^2)
-
-	int			_class_device_instance{-1};
 
 	uint32_t		_device_id{0};
 	const enum Rotation	_rotation;

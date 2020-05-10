@@ -41,8 +41,6 @@
 
 #include "parameters.h"
 
-#include <drivers/drv_accel.h>
-#include <drivers/drv_gyro.h>
 #include <drivers/drv_mag.h>
 #include <drivers/drv_hrt.h>
 
@@ -52,13 +50,13 @@
 #include <lib/ecl/validation/data_validator.h>
 #include <lib/ecl/validation/data_validator_group.h>
 #include <lib/mag_compensation/MagCompensation.hpp>
-
+#include <px4_platform_common/module_params.h>
+#include <sensor_calibration/SensorCalibration.hpp>
 #include <uORB/Publication.hpp>
 #include <uORB/Subscription.hpp>
 #include <uORB/topics/sensor_accel_integrated.h>
 #include <uORB/topics/sensor_combined.h>
 #include <uORB/topics/sensor_preflight.h>
-#include <uORB/topics/sensor_correction.h>
 #include <uORB/topics/sensor_gyro_integrated.h>
 #include <uORB/topics/sensor_selection.h>
 #include <uORB/topics/vehicle_magnetometer.h>
@@ -118,7 +116,7 @@ public:
 	 */
 	void checkFailover();
 
-	int bestGyroID() const { return _gyro_device_id[_gyro.last_best_vote]; }
+	int bestGyroID() const { return _gyro_calibration[_gyro.last_best_vote].device_id(); }
 
 	/**
 	 * Calculates the magnitude in m/s/s of the largest difference between the primary and any other accel sensor
@@ -155,7 +153,7 @@ private:
 		uORB::Subscription subscription[SENSOR_COUNT_MAX]; /**< raw sensor data subscription */
 		DataValidatorGroup voter{1};
 		unsigned int last_failover_count{0};
-		ORB_PRIO priority[SENSOR_COUNT_MAX] {}; /**< sensor priority */
+		ORB_PRIO priority[SENSOR_COUNT_MAX] {ORB_PRIO_UNINITIALIZED, ORB_PRIO_UNINITIALIZED, ORB_PRIO_UNINITIALIZED, ORB_PRIO_UNINITIALIZED}; /**< sensor priority */
 		uint8_t last_best_vote{0}; /**< index of the latest best vote */
 		uint8_t subscription_count{0};
 		bool enabled[SENSOR_COUNT_MAX] {true, true, true, true};
@@ -199,13 +197,22 @@ private:
 	SensorData _gyro{ORB_ID::sensor_gyro_integrated};
 	SensorData _mag{ORB_ID::sensor_mag};
 
+	SensorCalibration _accel_calibration[ACCEL_COUNT_MAX] {
+		{SensorCalibration::SensorType::Accelerometer},
+		{SensorCalibration::SensorType::Accelerometer},
+		{SensorCalibration::SensorType::Accelerometer},
+	};
+
+	SensorCalibration _gyro_calibration[GYRO_COUNT_MAX] {
+		{SensorCalibration::SensorType::Gyroscope},
+		{SensorCalibration::SensorType::Gyroscope},
+		{SensorCalibration::SensorType::Gyroscope},
+	};
+
 	orb_advert_t _mavlink_log_pub{nullptr};
 
 	uORB::Publication<sensor_selection_s> _sensor_selection_pub{ORB_ID(sensor_selection)};	/**< handle to the sensor selection uORB topic */
 	uORB::PublicationQueued<subsystem_info_s> _info_pub{ORB_ID(subsystem_info)};	/* subsystem info publication */
-
-	/* sensor thermal compensation */
-	uORB::Subscription _corrections_sub{ORB_ID(sensor_correction)};
 
 	sensor_combined_s _last_sensor_data[SENSOR_COUNT_MAX] {};	/**< latest sensor data from all sensors instances */
 	vehicle_magnetometer_s _last_magnetometer[SENSOR_COUNT_MAX] {}; /**< latest sensor data from all sensors instances */
@@ -225,13 +232,10 @@ private:
 	/* Magnetometer interference compensation */
 	MagCompensator _mag_compensator;
 
-	uint32_t _accel_device_id[SENSOR_COUNT_MAX] {};	/**< accel driver device id for each uorb instance */
-	uint32_t _gyro_device_id[SENSOR_COUNT_MAX] {};	/**< gyro driver device id for each uorb instance */
 	uint32_t _mag_device_id[SENSOR_COUNT_MAX] {};	/**< mag driver device id for each uorb instance */
 
 	uint64_t _last_accel_timestamp[ACCEL_COUNT_MAX] {};	/**< latest full timestamp */
 
-	sensor_correction_s _corrections {};		/**< struct containing the sensor corrections to be published to the uORB */
 	sensor_selection_s _selection {};		/**< struct containing the sensor selection to be published to the uORB */
 	subsystem_info_s _info {};			/**< subsystem info publication */
 };

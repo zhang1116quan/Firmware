@@ -33,7 +33,7 @@
 
 #pragma once
 
-#include <sensor_corrections/SensorCorrections.hpp>
+#include <sensor_calibration/SensorCalibration.hpp>
 
 #include <lib/mathlib/math/Limits.hpp>
 #include <lib/matrix/matrix/math.hpp>
@@ -74,8 +74,8 @@ private:
 	uORB::SubscriptionCallbackWorkItem _sensor_accel_integrated_sub;
 	uORB::SubscriptionCallbackWorkItem _sensor_gyro_integrated_sub;
 
-	SensorCorrections _accel_corrections;
-	SensorCorrections _gyro_corrections;
+	SensorCalibration _accel_calibration{SensorCalibration::SensorType::Accelerometer};
+	SensorCalibration _gyro_calibration{SensorCalibration::SensorType::Gyroscope};
 };
 
 } // namespace sensors
