@@ -194,17 +194,3 @@ PARAM_DEFINE_INT32(ASPD_FS_T2, 100);
  * @unit m/s
  */
 PARAM_DEFINE_FLOAT(ASPD_STALL, 10.0f);
-
-/**
- * Maximum airspeed allowed for arming.
- *
- * Deny arming if the current airspeed estimate (equivalent airspeed) is greater than this value.
- * Excessive airspeed measurements on ground are either caused by wind or bad airspeed calibration.
- *
- * @group Airspeed Validator
- * @unit m/s
- * @min 0.5
- * @max 30.0
- * @increment 0.1
- */
-PARAM_DEFINE_FLOAT(ASPD_MAX_ARM, 4.0f);
