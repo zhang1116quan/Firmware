@@ -94,7 +94,6 @@ px4_add_board(
 		vtol_att_control
 	SYSTEMCMDS
 		bl_update
-		config
 		#dmesg
 		dumpfile
 		esc_calib
@@ -112,7 +111,6 @@ px4_add_board(
 		reboot
 		reflect
 		sd_bench
-		shutdown
 		tests # tests and test runner
 		top
 		topic_listener

@@ -136,9 +136,6 @@ if [[ $INSTALL_NUTTX == "true" ]]; then
 		sudo usermod -a -G dialout $USER
 	fi
 
-	# Remove modem manager (interferes with PX4 serial port/USB serial usage).
-	sudo apt-get remove modemmanager -y
-
 	# arm-none-eabi-gcc
 	NUTTX_GCC_VERSION="7-2017-q4-major"
 
@@ -193,6 +190,7 @@ if [[ $INSTALL_SIM == "true" ]]; then
 		gstreamer1.0-plugins-base \
 		gstreamer1.0-plugins-good \
 		gstreamer1.0-plugins-ugly \
+		gstreamer1.0-libav \
 		libeigen3-dev \
 		libgazebo9-dev \
 		libgstreamer-plugins-base1.0-dev \

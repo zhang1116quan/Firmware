@@ -54,7 +54,6 @@
 #include <px4_platform_common/posix.h>
 #include <px4_platform_common/tasks.h>
 #include <uORB/Publication.hpp>
-#include <uORB/PublicationQueued.hpp>
 #include <uORB/Subscription.hpp>
 #include <uORB/SubscriptionCallback.hpp>
 #include <uORB/topics/home_position.h>
@@ -192,6 +191,8 @@ private:
 
 	bool _in_failsafe = false; /**< true if failsafe was entered within current cycle */
 
+	bool _hover_thrust_initialized{false};
+
 	/** Timeout in us for trajectory data to get considered invalid */
 	static constexpr uint64_t TRAJECTORY_STREAM_TIMEOUT_US = 500_ms;
 	/** number of tries before switching to a failsafe flight task */
@@ -282,7 +283,7 @@ private:
 MulticopterPositionControl::MulticopterPositionControl(bool vtol) :
 	SuperBlock(nullptr, "MPC"),
 	ModuleParams(nullptr),
-	WorkItem(MODULE_NAME, px4::wq_configurations::att_pos_ctrl),
+	WorkItem(MODULE_NAME, px4::wq_configurations::navigation_and_controllers),
 	_vehicle_attitude_setpoint_pub(vtol ? ORB_ID(mc_virtual_attitude_setpoint) : ORB_ID(vehicle_attitude_setpoint)),
 	_vel_x_deriv(this, "VELD"),
 	_vel_y_deriv(this, "VELD"),
@@ -316,8 +317,8 @@ MulticopterPositionControl::init()
 		return false;
 	}
 
-	// limit to every other vehicle_local_position update (~62.5 Hz)
-	_local_pos_sub.set_interval_us(16_ms);
+	// limit to every other vehicle_local_position update (50 Hz)
+	_local_pos_sub.set_interval_us(20_ms);
 
 	_time_stamp_last_loop = hrt_absolute_time();
 
@@ -361,9 +362,12 @@ MulticopterPositionControl::parameters_update(bool force)
 		}
 
 		_control.setPositionGains(Vector3f(_param_mpc_xy_p.get(), _param_mpc_xy_p.get(), _param_mpc_z_p.get()));
-		_control.setVelocityGains(Vector3f(_param_mpc_xy_vel_p.get(), _param_mpc_xy_vel_p.get(), _param_mpc_z_vel_p.get()),
-					  Vector3f(_param_mpc_xy_vel_i.get(), _param_mpc_xy_vel_i.get(), _param_mpc_z_vel_i.get()),
-					  Vector3f(_param_mpc_xy_vel_d.get(), _param_mpc_xy_vel_d.get(), _param_mpc_z_vel_d.get()));
+		// backwards compatibility scale for velocity gains to non-acceleration based control, needs to be overcome with configuration conversion
+		const float hover_scale = 20.f;
+		_control.setVelocityGains(Vector3f(_param_mpc_xy_vel_p.get(), _param_mpc_xy_vel_p.get(),
+						   _param_mpc_z_vel_p.get()) * hover_scale,
+					  Vector3f(_param_mpc_xy_vel_i.get(), _param_mpc_xy_vel_i.get(), _param_mpc_z_vel_i.get()) * hover_scale,
+					  Vector3f(_param_mpc_xy_vel_d.get(), _param_mpc_xy_vel_d.get(), _param_mpc_z_vel_d.get()) * hover_scale);
 		_control.setVelocityLimits(_param_mpc_xy_vel_max.get(), _param_mpc_z_vel_max_up.get(), _param_mpc_z_vel_max_dn.get());
 		_control.setThrustLimits(_param_mpc_thr_min.get(), _param_mpc_thr_max.get());
 		_control.setTiltLimit(M_DEG_TO_RAD_F * _param_mpc_tiltmax_air.get()); // convert to radians!
@@ -381,16 +385,17 @@ MulticopterPositionControl::parameters_update(bool force)
 			mavlink_log_critical(&_mavlink_log_pub, "Manual speed has been constrained by max speed");
 		}
 
-		if (!_param_mpc_use_hte.get()) {
-			if (_param_mpc_thr_hover.get() > _param_mpc_thr_max.get() ||
-			    _param_mpc_thr_hover.get() < _param_mpc_thr_min.get()) {
-				_param_mpc_thr_hover.set(math::constrain(_param_mpc_thr_hover.get(), _param_mpc_thr_min.get(),
-							 _param_mpc_thr_max.get()));
-				_param_mpc_thr_hover.commit();
-				mavlink_log_critical(&_mavlink_log_pub, "Hover thrust has been constrained by min/max");
-			}
+		if (_param_mpc_thr_hover.get() > _param_mpc_thr_max.get() ||
+		    _param_mpc_thr_hover.get() < _param_mpc_thr_min.get()) {
+			_param_mpc_thr_hover.set(math::constrain(_param_mpc_thr_hover.get(), _param_mpc_thr_min.get(),
+						 _param_mpc_thr_max.get()));
+			_param_mpc_thr_hover.commit();
+			mavlink_log_critical(&_mavlink_log_pub, "Hover thrust has been constrained by min/max");
+		}
 
-			_control.updateHoverThrust(_param_mpc_thr_hover.get());
+		if (!_param_mpc_use_hte.get() || !_hover_thrust_initialized) {
+			_control.setHoverThrust(_param_mpc_thr_hover.get());
+			_hover_thrust_initialized = true;
 		}
 
 		_flight_tasks.handleParameterUpdate();
@@ -613,6 +618,7 @@ MulticopterPositionControl::Run()
 			// limit tilt during takeoff ramupup
 			if (_takeoff.getTakeoffState() < TakeoffState::flight) {
 				constraints.tilt = math::radians(_param_mpc_tiltmax_lnd.get());
+				setpoint.acceleration[2] = NAN;
 			}
 
 			// limit altitude only if local position is valid
