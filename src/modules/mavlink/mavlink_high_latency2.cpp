@@ -200,9 +200,13 @@ void MavlinkStreamHighLatency2::reset_analysers(const hrt_abstime t)
 
 bool MavlinkStreamHighLatency2::write_airspeed(mavlink_high_latency2_t *msg)
 {
-	airspeed_s airspeed;
+	airspeed_validated_s airspeed_validated;
 
-	if (_airspeed_sub.update(&airspeed)) {
+	if (_airspeed_validated_sub.update(&airspeed_validated)) {
+		if (!PX4_ISFINITE(airspeed_validated.indicated_airspeed_m_s)) { // the airspeed is set to NAN if not valid
+			msg->failure_flags |= HL_FAILURE_FLAG_DIFFERENTIAL_PRESSURE;
+		}
+
 		return true;
 	}
 
